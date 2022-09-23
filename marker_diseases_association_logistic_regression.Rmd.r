@@ -1,0 +1,353 @@
+# Databricks notebook source
+install.packages('corrplot')
+install.packages('forestplot')
+
+# COMMAND ----------
+
+### load libraries
+suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(RColorBrewer))
+suppressPackageStartupMessages(library(corrplot))
+suppressPackageStartupMessages(library(forestplot))
+suppressPackageStartupMessages(library(stringr))
+suppressPackageStartupMessages(library(progress))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(plyr))
+
+# COMMAND ----------
+
+# reformat_mtb_id <- function(x) paste("mtb_", as.character(as.integer(x)), sep="")
+
+### input paths & files
+# path and file names should be customized
+cohort = 'FR'
+subjectID = 'PLASMA_ID'
+meta_file = '/data/projects/FR/pheno/FR_pheno.csv'
+cohort_key_variables = c('PLASMA_ID','BL_AGE','MEN','BMI')
+key_variables = c("SubjectID", "Age", "Sex", "BMI")
+cohort_covariates = c() # covariate list is optional, set it to c() when not needed, can be imported from a table
+PREV_THRESH = 0.1
+
+
+
+# COMMAND ----------
+
+# load human metabolite profile
+fr_neg_df=fread('/dbfs/mnt/client-001sap21p001-fr/03_data_extraction/metabolomics/rLC/FR_rLC_neg_dedupnormtrim.csv', header=T)
+fr_pos_df=fread('/dbfs/mnt/client-001sap21p001-fr/03_data_extraction/metabolomics/rLC/FR_rLC_pos_dedupnormtrim.csv', header=T)
+fr_neg_pheno=fread('/dbfs/mnt/client-001sap21p001-fr/03_data_extraction/metabolomics/rLC/FR_rLC_neg_dedupnormtrim.description.csv')
+fr_pos_pheno=fread('/dbfs/mnt/client-001sap21p001-fr/03_data_extraction/metabolomics/rLC/FR_rLC_pos_dedupnormtrim.description.csv')
+fr_pos_pheno[1:2,1:3]
+
+
+# COMMAND ----------
+
+mtb_file=merge(fr_pos_df, fr_neg_df, by = "PLASMA_ID")
+colnames
+print(dim(mtb_file))
+
+mtb_des_file=rbind(fr_pos_pheno,fr_neg_pheno)
+print(dim(mtb_des_file))
+
+# COMMAND ----------
+
+#remove the dot
+colnames(mtb_file)=gsub("\\..*","",colnames(mtb_file))
+colnames(mtb_file)[1]='SubjectID'
+print(dim(mtb_file))
+print(mtb_file[1:2,1:3])
+print(dim(mtb_des_file))
+mtb_des_file[1:3,1:2]
+
+# COMMAND ----------
+
+# metabolites data
+mtb_des_dt = mtb_des_file
+colnames(mtb_des_dt)[1] = "metabolite"
+mtb_des_dt$metabolite=c(fr_pos_pheno_list,fr_neg_pheno_list)
+mtb_des_dt$metabolite=gsub("\\..*","",mtb_des_dt$metabolite)
+mtb_dt = mtb_file
+colnames(mtb_dt)[1]='SubjectID'
+mtb_list = colnames(mtb_dt)[-(1)]
+
+# COMMAND ----------
+
+### input paths & files
+# path and file names should be customized
+cohort = 'FR'
+subjectID = 'PLASMA_ID'
+cohort_key_variables = c('PLASMA_ID','BL_AGE','MEN','BMI')
+key_variables = c("SubjectID", "Age", "Sex", "BMI")
+cohort_covariates = c() # covariate list is optional, set it to c() when not needed, can be imported from a table
+PREV_THRESH = 0.1
+
+# COMMAND ----------
+
+# MAGIC %md # meta file
+
+# COMMAND ----------
+
+#meta file
+meta_dt = fread('/dbfs/mnt/client-001sap21p001-fr/04_data_analysis/pheno/FR_pheno.csv')
+incident <- colnames(meta_dt)[which(grepl("INCIDENT", colnames(meta_dt)))]
+prevalent <- colnames(meta_dt)[which(grepl("PREVAL", colnames(meta_dt)))]
+incident2 <- gsub(x = incident, pattern = 'INCIDENT_', replacement = "")
+prevalent2 <- gsub(x = prevalent, pattern = 'PREVAL_', replacement = "")
+both <- intersect(incident2, prevalent2)
+pheno_dich_variables = list()
+for (i in both) {
+  inc <- paste("INCIDENT_", i, sep = "")
+  prev <- paste("PREVAL_", i, sep = "")
+  pheno_dich_variables = c(pheno_dich_variables, inc, prev)
+}
+pheno_dich_variables <- unlist(pheno_dich_variables)
+pheno_variables = pheno_dich_variables
+pheno_variables = grep("RX", pheno_variables, value = TRUE, invert = TRUE)
+pheno_dich_variables = pheno_variables
+meta_dt = meta_dt[, c(cohort_key_variables, cohort_covariates, pheno_variables, "CURR_SMOKE", "LIPID_TREAT"), with=F]
+colnames(meta_dt) = c(key_variables, cohort_covariates, pheno_variables, "CURR_SMOKE", "LIPID_TREAT")
+
+# COMMAND ----------
+
+# MAGIC %md # selected metabolites for disease associations
+
+# COMMAND ----------
+
+best_up=fread('/dbfs/mnt/client-002sap21p024-paint/04_data_analysis/results/top_reduced_fr_H_marker.csv')
+best_down=fread('/dbfs/mnt/client-002sap21p024-paint/04_data_analysis/results/top_elevated_fr_H_marker.csv')
+best=c(unlist(best_down$metabolite_FR),unlist(best_up$metabolite_FR))
+
+# COMMAND ----------
+
+all_mtb=colnames(mtb_dt)[startsWith(colnames(mtb_dt), 'rLC')]
+
+# COMMAND ----------
+
+fr_list=Reduce(intersect,list(fr_list,all_mtb))
+print(length(fr_list))z
+
+# COMMAND ----------
+
+mtb_list = fr_list
+mtb_names = fr_list
+mtb_dt=as.data.frame(mtb_dt)
+mtb_dt_new <- mtb_dt[,c("SubjectID", mtb_list)]
+
+# COMMAND ----------
+
+# library(tidyr)
+mtb_dt_new=mtb_dt_new %>% drop_na(SubjectID)
+
+# COMMAND ----------
+
+mtb_dt_new[is.na(mtb_dt_new)]=0
+
+# COMMAND ----------
+
+# MAGIC %md # fill na, cap outliers, scale
+
+# COMMAND ----------
+
+normalize_cap_scale <- function(x) {
+  fill_value = min(x, na.rm=T)
+  iqr = IQR(x)
+  qnt <- quantile(x, probs=c(.25, .75), na.rm=T)
+  upper_cap <- quantile(x, probs=c(.99))
+  x[x > (qnt[2] + 4*iqr)] <- upper_cap
+  N = length(x[is.na(x)])
+  x[is.na(x)] <- runif(N, fill_value/3, fill_value)
+  x <- scale(x)
+}
+
+
+# COMMAND ----------
+
+# MAGIC %md #regression
+
+# COMMAND ----------
+
+pheno_logistic_model <- function(pheno_var, covariates) {
+  if (pheno_var %like% 'LIPID') {
+    covariates <- c(covariates, "LIPID_TREAT")
+  } else if (pheno_var %like% 'COPD') {
+    covariates <- c(covariates, "CURR_SMOKE")
+  }
+  work_dt <- meta_dt[!is.na(meta_dt[[pheno_var]]), c("SubjectID", covariates, pheno_var), with=FALSE]
+  work_dt <- merge(work_dt, mtb_dt, by="SubjectID")
+  colname <- c("metabolite", "pvalue","oddsratio","ci_lower","ci_upper","n_total","n_case","n_control")
+  result_dt <- data.table(matrix(ncol=length(colname), nrow=0))
+  colnames(result_dt) <- colname
+  pb <- progress_bar$new(format = " creating model [:bar] :percent eta: :eta", total = length(mtb_list), clear = FALSE, width = 60)
+  for (i in 1:length(mtb_list)) {
+    pb$tick()
+    num_non_missing = nrow(work_dt[!is.na(work_dt[[mtb_list[i]]])])
+    dt.c = work_dt[, c("SubjectID", mtb_list[i], covariates, pheno_var), with=FALSE]
+    dt.c[[mtb_list[i]]] <- normalize_cap_scale(dt.c[[mtb_list[i]]])
+    # check for enough samples of each response type
+    prop_case <- nrow(dt.c[dt.c[[pheno_var]] == 1]) / nrow(dt.c)
+    prop_control <- nrow(dt.c[dt.c[[pheno_var]] == 0]) / nrow(dt.c)
+    smallest_proportion <- min(prop_case, prop_control)
+    if ( (num_non_missing > nrow(work_dt)*PREV_THRESH) && (nrow(dt.c) >= 10 * (length(covariates) + 1) / smallest_proportion)) {
+      f <- paste(pheno_var, "~", paste(c(covariates, mtb_list[i]), collapse=" + "))
+      lmod = glm(as.formula(f), data = dt.c, family = binomial(link="logit"))
+      lmod_sum = summary(lmod)
+      ci = confint.default(lmod)
+      frame = data.table(metabolite = mtb_list[i],
+                         pvalue = lmod_sum$coefficients[mtb_list[i],'Pr(>|z|)'],
+                         oddsratio = exp(lmod_sum$coefficients[mtb_list[i],'Estimate']),
+                         ci_lower = exp(ci[mtb_list[i],"2.5 %"]),
+                         ci_upper = exp(ci[mtb_list[i],"97.5 %"]),
+                         n_total = nrow(dt.c),
+                         n_case = nrow(dt.c[dt.c[[pheno_var]]==1]),
+                         n_control = nrow(dt.c[dt.c[[pheno_var]]==0]))
+      result_dt = rbind(result_dt, frame)
+    } else {
+      frame = data.table(metabolite = mtb_list[i],
+                         pvalue = "NA",
+                         oddsratio = "NA",
+                         ci_lower = "NA",
+                         ci_upper = "NA",
+                         n_total = nrow(dt.c),
+                         n_case = nrow(dt.c[dt.c[[pheno_var]]==1]),
+                         n_control = nrow(dt.c[dt.c[[pheno_var]]==0]))
+      result_dt = rbind(result_dt, frame)
+    }
+  }
+  result_dt = merge(mtb_des_dt[,.(metabolite, MZ, RT)], result_dt, by='metabolite')
+  result_dt = result_dt[order(pvalue)]
+  return(result_dt)
+}
+
+# COMMAND ----------
+
+# MAGIC %md # logistic
+
+# COMMAND ----------
+
+### logistic regressions for all dichotomous phenotypes
+covar_list = c(setdiff(key_variables, c("SubjectID")), cohort_covariates)
+colname <- c("metabolite", "MZ", "RT", "pvalue","oddsratio","ci_lower","ci_upper","n_total","n_case","n_control","pheno")
+res_logit_dt <- data.table(matrix(ncol=length(colname), nrow=0))
+colnames(res_logit_dt) <- colname
+for (pheno_idx in 1:length(pheno_dich_variables)) {
+  pheno_var = pheno_dich_variables[pheno_idx]
+  frame = pheno_logistic_model(pheno_var=pheno_var, covariates=covar_list)
+  frame$pheno = rep(pheno_var, nrow(frame))
+  res_logit_dt = rbind(res_logit_dt, frame)
+}
+res_logit_dt$pvalue <- as.numeric(res_logit_dt$pvalue)
+res_logit_dt <- res_logit_dt[order(pvalue)]
+
+# COMMAND ----------
+
+res_logit_dt
+
+# COMMAND ----------
+
+res_fn <- '/dbfs/mnt/sapbio-client-002sap/002SAP21P009-Maltepe-lamb-hypoxia/04-DataAnalysis/raw_data/all_disease_associations.csv'
+
+# COMMAND ----------
+
+write.table(res_logit_dt, res_fn, sep=",", eol="\n", row.names=F, col.names=T)
+
+# COMMAND ----------
+
+# MAGIC %md # raindrop
+
+# COMMAND ----------
+
+ggraindrop = function (
+  dt, x_col='x', y_col='y', x_limits=c(), y_limits=c(),
+  size_col='pvalue', fill_col='effectsize', 
+  size_transform='-log10',
+  color_palette='RdBu', x_angle=45, x.tick.text.size=10, y.tick.text.size=10
+) {
+  # Pre-plot checks
+  if (!(x_col %in% names(dt))) stop('Error: x_col not in data.')
+  if (!(y_col %in% names(dt))) stop('Error: y_col not in data.')
+  if (!(size_col %in% names(dt))) stop('Error: size_col not in data.')
+  if (!(fill_col %in% names(dt))) stop('Error: fill_col not in data.')
+  
+  # Generate fill limits
+  fill_lim = dt[, max(abs(get(fill_col)),na.rm=T)]
+  
+  # x and y axis order
+  if (length(x_limits) == 0) {
+    x_limits = unique(dt[[x_col]])
+  }
+  if (length(y_limits) == 0) {
+    y_limits = unique(dt[[y_col]])
+  }
+  # Generate a nice looking heatmap with p-values as circles
+  # Return a ggplot object.
+  gg.plot = ggplot(dt, aes_string(x=x_col, y=y_col, fill=fill_col)) +
+    # geom_raster() +
+    geom_point(
+      pch=21, 
+      color='black', 
+      mapping=aes(
+        size=sapply(
+          paste(size_transform, '(', size_col, ')', sep=''), function (xi) {
+            eval(parse(text=xi))
+          }, 
+          USE.NAMES=F
+        )
+      )) + 
+    scale_size_continuous(
+      name=paste0(size_transform, '(', size_col, ')', sep='')
+    ) +
+    scale_fill_distiller(
+      palette=color_palette,
+      limits=c(-fill_lim, fill_lim)
+    ) +
+    scale_x_discrete(name = "", limits = x_limits, expand=c(0.1, 0.1)) +
+    scale_y_discrete(name = "", limits = y_limits, expand=c(0.1, 0.1)) +
+    theme(
+      panel.background=element_rect(fill=NA, color='black'),
+      panel.grid.major=element_line(color='gray90', linetype='dotted'),
+      axis.text=element_text(color='black'),
+      axis.title.x=element_blank(),
+      axis.title.y=element_blank(),
+      axis.text.x=element_text(angle=x_angle, hjust=1, vjust=1, size=x.tick.text.size),
+      axis.text.y=element_text(size=y.tick.text.size)
+    )
+  return(gg.plot)
+}
+
+
+
+# COMMAND ----------
+
+############################## raindrop plot ##############################
+### for the selected metabolites
+# source('/data/code/library/ggraindrop.R')
+
+col_names <- c("pheno","metabolite","pvalue","oddsratio")
+sum_dt = res_logit_dt[,col_names,with=F]
+sum_dt = sum_dt[!is.na(sum_dt$pvalue),]
+for (disease in unique(sum_dt$pheno)) {
+  subset <- sum_dt[which(pheno == disease),]
+  if (sum(apply(subset[, "pvalue"] > 0.001, 1, all, na.rm = FALSE)) == nrow(subset)) {
+    sum_dt <- sum_dt[-which(pheno == disease),]
+  }
+}
+sum_dt$pvalue <- as.numeric(sum_dt$pvalue)
+sum_dt$pvalue <- sapply(sum_dt$pvalue, function(x) ifelse(x <= 0.05, x, NA))
+sum_dt <- sum_dt[which(sum_dt$oddsratio != "NA"),]
+sum_dt$oddsratio <- as.numeric(sum_dt$oddsratio)
+sum_dt$oddsratio <- log(sum_dt$oddsratio)
+colnames(sum_dt)[4] <- "logoddsratio"
+sum_dt$pheno <- factor(sum_dt$pheno, levels = unique(sum_dt$pheno))
+sum_dt$labels <- mapvalues(sum_dt$metabolite, from=mtb_list, to=mtb_names)
+p <- ggraindrop(sum_dt, x_col='metabolite', y_col='pheno', size_col='pvalue', fill_col='logoddsratio')
+print(p)
+# ggsave(plot_fn, width=12, height=8)
+
+# COMMAND ----------
+
+p
+
+# COMMAND ----------
+
+
