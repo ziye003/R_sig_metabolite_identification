@@ -1,0 +1,984 @@
+
+---
+title: "plots_results"
+output:
+  html_document:
+    toc: true
+---
+
+
+```{r}
+library(data.table)
+# library(sapbio.ds.ml)
+library(ggplot2)
+# library(lme4)
+library(MASS)
+# library(broom.mixed)
+```
+
+
+```{r}
+library(ordinal)
+```
+
+# load data
+
+```{r}
+# df=fread('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/std_log_impute_raw_data_w_pheno_081222.csv')
+df=fread('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/std_impute_raw_data_w_pheno_083122.csv')
+# df=fread('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/raw_data_w_pheno_083122.csv')
+df[1:3,1:4]
+```
+
+
+```{r}
+df[is.na(df)]=0
+pheno_list=colnames(df)[!startsWith(colnames(df), 'rLC')]
+mtb_list=colnames(df)[startsWith(colnames(df),'rLC')]
+# pheno_list
+print(dim(df))
+print(length(mtb_list))
+mdata <- melt(df, id=c(pheno_list))
+mdata$mtb_id=as.character(unlist(mdata$variable))
+mdata=as.data.frame(mdata)
+mdata$mtb_id=as.character(unlist(mdata$variable))
+names(mdata)[names(mdata) == "Study ID (Neonate)"] <- "StudyID"
+names(mdata)[names(mdata) == "Study ID (Neonate)"] <- "StudyID"
+names(mdata)[names(mdata) == "Overall highest Thompson score"] <- "WorstThompson"
+names(mdata)[names(mdata) == "Overall worst Sarnat grade"] <- "WorstSarnat"
+names(mdata)[names(mdata) == "Sample type and description"] <- "SampleType"
+names(mdata)[names(mdata) == "First time-point worst grade recorded"] <- "WorstGradeTime"
+names(mdata)[names(mdata) == "Unique sample ID_x"] <- "USmpleID"
+# names(mdata)[names(mdata) == "variable"] <- "mtb"
+names(mdata)[names(mdata) == "value"] <- "level"
+
+mdata[mdata$Sarnat_T1=="Moderate (2)",'Sarnat_T1']=2
+mdata[mdata$Sarnat_T1=="Severe (3)",'Sarnat_T1']=3
+mdata[mdata$Sarnat_T1=="Mild (1)",'Sarnat_T1']=1
+mdata[mdata$Sarnat_T1=='-','Sarnat_T1']='-1'
+mdata[mdata$Sarnat_T1=='','Sarnat_T1']='-1'
+
+mdata[mdata$Sarnat_T2=="Moderate (2)",'Sarnat_T2']=2
+mdata[mdata$Sarnat_T2=="Severe (3)",'Sarnat_T2']=3
+mdata[mdata$Sarnat_T2=="Mild (1)",'Sarnat_T2']=1
+mdata[mdata$Sarnat_T2=="Normal (0)",'Sarnat_T2']='0'
+mdata[mdata$Sarnat_T2=="Normal",'Sarnat_T2']='0'
+mdata[mdata$Sarnat_T2=='-','Sarnat_T2']='-1'
+mdata[mdata$Sarnat_T2=='','Sarnat_T2']='-1'
+
+mdata[mdata$WorstSarnat=="Moderate",'WorstSarnat']=2
+mdata[mdata$WorstSarnat=="Severe",'WorstSarnat']=3
+mdata[mdata$WorstSarnat=="Mild",'WorstSarnat']=1
+mdata[mdata$WorstSarnat=="Not done",'WorstSarnat']='-1'
+mdata[mdata$WorstSarnat=="Data not available on source",'WorstSarnat']='-1'
+mdata[mdata$WorstSarnat=='','WorstSarnat']='-1'
+
+mdata$Visit=mdata$Timepoint
+mdata[mdata$Visit=="T1",'Visit']=1
+mdata[mdata$Visit=="T2",'Visit']=2
+
+
+mdata=setDT(mdata) 
+mdata$Sarnat_T1=as.numeric(unlist(mdata$Sarnat_T1))
+mdata$Sarnat_T2=as.numeric(unlist(mdata$Sarnat_T2))
+print(unique(mdata$Sarnat_T1))
+print(unique(mdata$Sarnat_T2))
+
+```
+
+# load results
+## severity linear mixed
+
+```{r}
+severity_results = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/lmm_rstudio_results_w_warningMsg_msg.RData')
+std_severity_results = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/std_lmm_rstudio_results_w_warningMsg_msg.RData')
+std_log_severity_results = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/std_log_lmm_rstudio_results_w_warningMsg_msg.RData')
+
+severity_output=dcast(severity_results,formula = mtb_id+warnings_full+msg~ term, value.var = c('estimate','std.error','statistic','p.value'))
+severity_std_output=dcast(std_severity_results,formula = mtb_id+warnings_full+msg~ term, value.var = c('estimate','std.error','statistic','p.value'))
+severity_std_log_output=dcast(std_log_severity_results,formula = mtb_id+warnings_full+msg~ term, value.var = c('estimate','std.error','statistic','p.value'))
+
+print(dim(severity_output))
+print(dim(severity_std_output))
+print(dim(severity_std_log_output))
+```
+
+## sarnat time 1 time 2
+
+```{r}
+results_t1 = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/t1_std_ordinal_clm_rstudio_results_w_warningMsg_msg_090122.RData')
+# results_t2 = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/t2_std_ordinal_clm_rstudio_results_w_warningMsg_msg_090122.RData')
+
+severity_t1=dcast(results_t1,formula = mtb_id+warnings_full ~ term, value.var = c('estimate','std.error','statistic','p.value'))
+# severity_t2=dcast(results_t2,formula = mtb_id+warnings_full ~ term, value.var = c('estimate','std.error','statistic','p.value'))
+severity_t1
+```
+
+
+```{r}
+# c_results_t1 = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/sexGA_t1_std_ordinal_clm_rstudio_results_w_warningMsg_msg.RData')
+# c_results_t2 = readRDS('dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/sexGA_t2_std_ordinal_clm_rstudio_results_w_warningMsg_msg.RData')
+
+
+# c_results_t1
+# covariate_severity_t1=dcast(covariate_results_t1,formula = mtb_id+warnings_full ~ term, value.var = c('estimate','std.error','statistic','p.value'))
+# covariate_severity_t2=dcast(covariate_results_t2,formula = mtb_id+warnings_full ~ term, value.var = c('estimate','std.error','statistic','p.value'))
+```
+
+## peak severity ordinal
+
+```{r}
+results_peak = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/worstp_ordinal_clm_rstudio_results_w_warningMsg_msg.RData')
+severity_peak=dcast(results_peak,formula = mtb_id+warnings_full ~ term, value.var = c('estimate','std.error','statistic','p.value'))
+```
+
+## thomspon
+
+```{r}
+tmp_results_t1 = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/t1_std_ordinal_lm_rstudio_results_thompson.RData')
+tmp_results_t2 = readRDS('/dbfs/mnt/client-002sap21p026-pepper-neshie/04_data_analysis/t2_std_ordinal_lm_rstudio_results_thompson.RData')
+tmp_results_t2
+tmp_severity_t1=dcast(tmp_results_t1,formula = mtb_id+warnings_full ~ term, value.var = c('estimate','std.error','statistic','p.value'))
+tmp_severity_t2=dcast(tmp_results_t2,formula = mtb_id+warnings_full ~ term, value.var = c('estimate','std.error','statistic','p.value'))
+```
+
+# severity plots
+
+```{r}
+print(dim(severity_std_output[severity_std_output$warnings_full!='None',]))
+print(dim(severity_std_log_output[severity_std_log_output$warnings_full!='None',]))
+```
+
+
+```{r}
+data=as.data.frame(severity_std_output)
+# data=as.data.frame(output)
+# data=data[data$warnings_full=='None',]
+data['logp']=-log10(data$p.value_Sarnat)
+data['Type']='Below threshold'
+data[data$logp>3 & data$estimate_Sarnat>0 ,'Type']='Elevated above threshold'
+data[data$logp>3 & data$estimate_Sarnat<0 ,'Type']='Reduced above threshold'
+```
+
+
+```{r}
+myplot=ggplot(data, aes(x=estimate_Sarnat, y=logp,color=Type))+geom_point(alpha = 0.4 )
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  xlim(-2, 2) + 
+scale_color_manual(values=c('grey','#039fbe','#cf1578'))+ 
+theme(legend.text = element_text(size = 15))+
+ theme(axis.title.y = element_text(size = 20))  + theme(axis.title.x = element_text(size = 20)) +
+ theme(axis.text.y = element_text(size = 15)) + theme(axis.text.x = element_text(size = 15)) 
+```
+
+
+```{r}
+print(length(data[data$logp>3 & data$estimate_Sarnat<0 ,'mtb_id']))
+print(length(data[data$logp>3 & data$estimate_Sarnat>0 ,'mtb_id']))
+reduced_lmm=data[data$logp>3 & data$estimate_Sarnat<0 ,'mtb_id']
+elevated_lmm=data[data$logp>3 & data$estimate_Sarnat>0 ,'mtb_id']
+lmm=data[data$logp>3,'mtb_id']
+
+data[data$logp>3 & data$estimate_Sarnat<0 & data$warnings_full=='None','mtb_id']
+```
+
+
+```{r}
+# mtb='rLC_neg_mtb_1293276' # Optimization stopped
+# mtb='rLC_pos_mtb_629943' # best down
+mtb='rLC_pos_mtb_869671' # best down
+# mtb='rLC_neg_mtb_1375224' # 2nd up
+# mtb='rLC_neg_mtb_3724398' # best up
+# mtb='rLC_neg_mtb_3755909' #peak
+# mtb = 'rLC_neg_mtb_1583136' #warning molecule
+
+
+# mtb = 'rLC_neg_mtb_1583136' #warning molecule
+# mtb = 'rLC_neg_mtb_1583136' #warning molecule
+# mtb = 'rLC_neg_mtb_1583136' #warning molecule
+
+test_data2=mdata[mtb_id %in% mtb] 
+test_data2=as.data.frame(test_data2)
+V1sit1 = test_data2[test_data2$Timepoint == 'T1',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T1','Visit')]
+colnames(V1sit1)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+V1sit2 = test_data2[test_data2$Timepoint == 'T2',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T2','Visit')]
+colnames(V1sit2)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+df1 = rbind(V1sit1,V1sit2)
+df1=df1[df1$Sarnat>=1,]
+print(dim(df1))
+df1$Sarnat=as.factor(df1$Sarnat)
+
+```
+
+
+```{r}
+myplot=ggplot(df1, aes(x=Sarnat, y=level, fill=Patient_ID)) +
+# myplot=ggplot(df1, aes(x=Sarnat, y=level, fill=Timepoint)) +
+  geom_boxplot()
+# Add dots
+myplot + geom_dotplot(binaxis='y', stackdir='center', dotsize = 0.5,
+                 position=position_dodge(1))+
+
+# scale_color_manual(values=c('#039fbe','#cf1578'))+
+ggtitle(mtb)+ 
+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+# # # # #   xlim(-1000, 1000) + 
+ theme(legend.position="none") +
+
+# theme(legend.text = element_text(size = 20))+
+ theme(axis.title.y = element_text(size = 25))  + theme(axis.title.x = element_text(size = 25)) +
+ theme(axis.text.y = element_text(size = 20)) + theme(axis.text.x = element_text(size =20)) + theme(
+plot.title = element_text(color="black", size=25, face="bold"))
+
+```
+
+# log severity plot
+
+```{r}
+data=as.data.frame(severity_std_log_output)
+# data=as.data.frame(output)
+# data=data[data$warnings_full=='None',]
+data['logp']=-log10(data$p.value_Sarnat)
+data['Type']='Below threshold'
+data[data$logp>3 & data$estimate_Sarnat>0 ,'Type']='Elevated above threshold'
+data[data$logp>3 & data$estimate_Sarnat<0 ,'Type']='Reduced above threshold'
+
+print(length(data[data$logp>3 & data$estimate_Sarnat<0 ,'mtb_id']))
+print(length(data[data$logp>3 & data$estimate_Sarnat>0 ,'mtb_id']))
+reduced_log_lmm=data[data$logp>3 & data$estimate_Sarnat<0 ,'mtb_id']
+elevated_log_lmm=data[data$logp>3 & data$estimate_Sarnat>0 ,'mtb_id']
+log_lmm=data[data$logp>3,'mtb_id']
+
+myplot=ggplot(data, aes(x=estimate_Sarnat, y=logp,color=Type))+geom_point(alpha = 0.4 )
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+#   xlim(-2, 2) + 
+scale_color_manual(values=c('grey','#039fbe','#cf1578'))+ 
+theme(legend.text = element_text(size = 15))+
+ theme(axis.title.y = element_text(size = 20))  + theme(axis.title.x = element_text(size = 20)) +
+ theme(axis.text.y = element_text(size = 15)) + theme(axis.text.x = element_text(size = 15)) 
+```
+
+
+```{r}
+print(length(data[data$logp>3 & data$estimate_Sarnat<0 ,'mtb_id']))
+print(length(data[data$logp>3 & data$estimate_Sarnat>0 ,'mtb_id']))
+reduced_log_lmm=data[data$logp>3 & data$estimate_Sarnat<0 ,'mtb_id']
+elevated_log_lmm=data[data$logp>3 & data$estimate_Sarnat>0 ,'mtb_id']
+log_lmm=data[data$logp>3,'mtb_id']
+
+data[data$logp>3 & data$estimate_Sarnat<0 & data$warnings_full!='None','mtb_id']
+data[data$logp>3 & data$estimate_Sarnat<0 & data$warnings_full=='None',c('mtb_id','estimate_Sarnat','p.value_Sarnat')]
+data[data$logp>3 & data$estimate_Sarnat<0 & data$warnings_full!='None',c('mtb_id','estimate_Sarnat','p.value_Sarnat')]
+
+```
+
+## peak box plot
+
+```{r}
+
+# mtb='rLC_neg_mtb_1455663' # best down
+
+# mtb='rLC_neg_mtb_3724398' # best up
+# mtb='rLC_neg_mtb_3630952' # best down warning
+# mtb = 'rLC_neg_mtb_3920887' #best up warning molecule
+
+# mtb='rLC_neg_mtb_3630952'
+mtb='rLC_neg_mtb_294302'
+
+
+
+test_data2=mdata[mtb_id %in% mtb] 
+test_data2=as.data.frame(test_data2)
+V1sit1 = test_data2[test_data2$Timepoint == 'T1',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T1','Visit')]
+colnames(V1sit1)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+V1sit2 = test_data2[test_data2$Timepoint == 'T2',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T2','Visit')]
+colnames(V1sit2)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+df1 = rbind(V1sit1,V1sit2)
+df1=df1[df1$Sarnat>=1,]
+print(dim(df1))
+df1$Sarnat=as.factor(df1$Sarnat)
+```
+
+
+```{r}
+myplot=ggplot(df1, aes(x=Sarnat, y=level, fill=Timepoint)) +
+  geom_boxplot()
+# Add dots
+myplot + geom_dotplot(binaxis='y', stackdir='center', dotsize = 0.5,
+                 position=position_dodge(1))+
+
+scale_color_manual(values=c('#039fbe','#cf1578'))+ ggtitle(mtb)+ 
+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+# # # # #   xlim(-1000, 1000) + 
+
+theme(legend.text = element_text(size = 20))+
+ theme(axis.title.y = element_text(size = 25))  + theme(axis.title.x = element_text(size = 25)) +
+ theme(axis.text.y = element_text(size = 20)) + theme(axis.text.x = element_text(size =20)) + theme(
+plot.title = element_text(color="black", size=25, face="bold"))
+
+```
+
+# t1
+
+```{r}
+data=as.data.frame(severity_t1)
+# data=as.data.frame(output)
+data=data[data$warnings_full=='None',]
+data['logp']=-log10(data$p.value_level)
+data['Type']='Below threshold'
+data[data$logp>3 & data$estimate_level>0 ,'Type']='Elevated above threshold'
+data[data$logp>3 & data$estimate_level<0 ,'Type']='Reduced above threshold'
+
+
+myplot=ggplot(data, aes(x=estimate_level, y=logp,color=Type))+geom_point(alpha = 0.4 )
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+#   xlim(-2, 2) + 
+scale_color_manual(values=c('grey','#039fbe','#cf1578'))+ 
+theme(legend.text = element_text(size = 15))+
+ theme(axis.title.y = element_text(size = 20))  + theme(axis.title.x = element_text(size = 20)) +
+ theme(axis.text.y = element_text(size = 15)) + theme(axis.text.x = element_text(size = 15)) 
+```
+
+
+```{r}
+data[order(-data$estimate_level ),c('mtb_id','estimate_level','logp')]
+```
+
+
+```{r}
+print(length(data[data$logp>3 & data$estimate_level<0 ,'mtb_id']))
+print(length(data[data$logp>3 & data$estimate_level>0 ,'mtb_id']))
+reduced_t1=data[data$logp>3 & data$estimate_level<0 ,'mtb_id']
+elevated_t1=data[data$logp>3 & data$estimate_level>0 ,'mtb_id']
+t1=data[data$logp>3  ,'mtb_id']
+data[data$logp>3  ,c('mtb_id','estimate_level','p.value_level')]
+```
+
+
+```{r}
+v1=data[data$mtb_id=='rLC_pos_mtb_1035331',]
+v1
+```
+
+## peak box plot
+
+```{r}
+# mtb='rLC_neg_mtb_3755909' # best down
+
+# mtb='rLC_pos_mtb_10320735' # best up
+# mtb='rLC_neg_mtb_294302'
+
+# mtb='rLC_neg_mtb_3630952'
+# mtb='rLC_pos_mtb_867621' # estimate reduced outlier
+mtb='rLC_pos_mtb_1035331' # estimate increased outlier
+
+test_data2=mdata[mtb_id %in% mtb] 
+test_data2=as.data.frame(test_data2)
+V1sit1 = test_data2[test_data2$Timepoint == 'T1',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T1','Visit')]
+colnames(V1sit1)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+V1sit2 = test_data2[test_data2$Timepoint == 'T2',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T2','Visit')]
+colnames(V1sit2)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+df1 = rbind(V1sit1,V1sit2)
+V1sit1=V1sit1[V1sit1$Sarnat>=0,]
+print(dim(V1sit1))
+# V1sit1$Sarnat=as.factor(V1sit1$Sarnat)
+```
+
+
+```{r}
+V1sit1
+```
+
+
+```{r}
+clm(factor(Sarnat)~level,data=V1sit1,Hess=TRUE)
+```
+
+
+```{r}
+polr(factor(Sarnat)~level,data=V1sit1,Hess=TRUE) 
+```
+
+
+```{r}
+myplot=ggplot(V1sit1, aes(x=factor(Sarnat), y=level, fill=Timepoint)) +
+  geom_boxplot()
+# Add dots
+myplot + geom_dotplot(binaxis='y', stackdir='center', dotsize = 0.5,
+                 position=position_dodge(1))+
+
+scale_color_manual(values=c('#039fbe','#cf1578'))+ ggtitle(mtb)+ 
+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+# # # # #   xlim(-1000, 1000) + 
+
+theme(legend.text = element_text(size = 20))+
+ theme(axis.title.y = element_text(size = 25))  + theme(axis.title.x = element_text(size = 25)) +
+ theme(axis.text.y = element_text(size = 20)) + theme(axis.text.x = element_text(size =20)) + theme(
+plot.title = element_text(color="black", size=25, face="bold"))
+
+```
+
+# t2
+
+```{r}
+data=as.data.frame(severity_t2)
+# data=as.data.frame(output)
+data=data[data$warnings_full=='None',]
+data['logp']=-log10(data$p.value_level)
+data['Type']='Below threshold'
+data[data$logp>3 & data$estimate_level>0 ,'Type']='Elevated above threshold'
+data[data$logp>3 & data$estimate_level<0 ,'Type']='Reduced above threshold'
+
+
+myplot=ggplot(data, aes(x=estimate_level, y=logp,color=Type))+geom_point(alpha = 0.4 )
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  xlim(-2, 2) + 
+scale_color_manual(values=c('grey','#039fbe','#cf1578'))+ 
+theme(legend.text = element_text(size = 15))+
+ theme(axis.title.y = element_text(size = 20))  + theme(axis.title.x = element_text(size = 20)) +
+ theme(axis.text.y = element_text(size = 15)) + theme(axis.text.x = element_text(size = 15)) 
+```
+
+
+```{r}
+print(length(data[data$logp>3 & data$estimate_level<0 ,'mtb_id']))
+print(length(data[data$logp>3 & data$estimate_level>0 ,'mtb_id']))
+reduced_t2=data[data$logp>3 & data$estimate_level<0 ,'mtb_id']
+elevated_t2=data[data$logp>3 & data$estimate_level>0 ,'mtb_id']
+t2=data[data$logp>3 ,'mtb_id']
+
+data[data$logp>3  ,c('mtb_id','estimate_level','p.value_level')]
+```
+
+## peak box plot
+
+```{r}
+# mtb='rLC_neg_mtb_3466281' # best down
+
+mtb='rLC_neg_mtb_1640306' # best up
+
+test_data2=mdata[mtb_id %in% mtb] 
+test_data2=as.data.frame(test_data2)
+V1sit1 = test_data2[test_data2$Timepoint == 'T1',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T1','Visit')]
+colnames(V1sit1)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+V1sit2 = test_data2[test_data2$Timepoint == 'T2',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T2','Visit')]
+colnames(V1sit2)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+df1 = rbind(V1sit1,V1sit2)
+V1sit2=V1sit2[V1sit2$Sarnat>=1,]
+print(dim(V1sit2))
+V1sit2$Sarnat=as.factor(V1sit2$Sarnat)
+```
+
+
+```{r}
+myplot=ggplot(V1sit2, aes(x=Sarnat, y=level, fill=Timepoint)) +
+  geom_boxplot()
+# Add dots
+myplot + geom_dotplot(binaxis='y', stackdir='center', dotsize = 0.5,
+                 position=position_dodge(1))+
+
+scale_color_manual(values=c('#039fbe','#cf1578'))+ ggtitle(mtb)+ 
+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+# # # # #   xlim(-1000, 1000) + 
+
+theme(legend.text = element_text(size = 20))+
+ theme(axis.title.y = element_text(size = 25))  + theme(axis.title.x = element_text(size = 25)) +
+ theme(axis.text.y = element_text(size = 20)) + theme(axis.text.x = element_text(size =20)) + theme(
+plot.title = element_text(color="black", size=25, face="bold"))
+
+```
+
+# peak severity
+
+```{r}
+data=as.data.frame(severity_peak)
+# data=as.data.frame(output)
+data=data[data$warnings_full=='None',]
+data['logp']=-log10(data$p.value_level)
+data['Type']='Below threshold'
+data[data$logp>3 & data$estimate_level>0 ,'Type']='Elevated above threshold'
+data[data$logp>3 & data$estimate_level<0 ,'Type']='Reduced above threshold'
+
+
+myplot=ggplot(data, aes(x=estimate_level, y=logp,color=Type))+geom_point(alpha = 0.4 )
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  xlim(-2, 2) + 
+scale_color_manual(values=c('grey','#039fbe','#cf1578'))+ 
+theme(legend.text = element_text(size = 15))+
+ theme(axis.title.y = element_text(size = 20))  + theme(axis.title.x = element_text(size = 20)) +
+ theme(axis.text.y = element_text(size = 15)) + theme(axis.text.x = element_text(size = 15)) 
+```
+
+
+```{r}
+print(length(data[data$logp>3 & data$estimate_level<0 ,'mtb_id']))
+print(length(data[data$logp>3 & data$estimate_level>0 ,'mtb_id']))
+reduced_peak=data[data$logp>3 & data$estimate_level<0 ,'mtb_id']
+elevated_peak=data[data$logp>3 & data$estimate_level>0 ,'mtb_id']
+peak=data[data$logp>3,'mtb_id']
+data[data$logp>3  ,c('mtb_id','estimate_level','p.value_level')]
+```
+
+
+```{r}
+df_worsk_peak=mdata[(mdata$WorstSarnat > 0)&(mdata$Timepoint=='T1') ,c("Timepoint", 'Sarnat_T1','Patient_ID','level','mtb_id','Visit','GA','WorstSarnat','WorstGradeTime')]
+colnames(df_worsk_peak)=c("Timepoint",'Sarnat_T1', 'Patient_ID','level','mtb_id','Visit','GA','WorstSarnat','WorstGradeTime')
+df_worsk_peak=as.data.frame(df_worsk_peak)
+
+df_worsk_peak$worstime=0
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="<6H",'Worstime']=3
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="6H",'Worstime']=6
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="24H",'Worstime']=24
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="48H",'Worstime']=48
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="72H",'Worstime']=72
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="96H",'Worstime']=96
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="D6",'Worstime']=144
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="D7",'Worstime']=168
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="D8",'Worstime']=192
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="D10",'Worstime']=240
+
+unique(setDT(df_worsk_peak), by = c("Patient_ID", "mtb_id"))
+print(dim(df_worsk_peak))
+df_worsk_peak$WorstSarnat=as.factor(df_worsk_peak$WorstSarnat)
+df_worsk_peak=setDT(df_worsk_peak)
+```
+
+
+```{r}
+# mtb='rLC_neg_mtb_3673167' #elevated
+mtb='rLC_neg_mtb_3755909' #reduced
+
+peak_mtb=df_worsk_peak[mtb_id %in% mtb]
+```
+
+
+```{r}
+myplot=ggplot(peak_mtb, aes(x=WorstSarnat, y=level,color=Sarnat_T1))+geom_point(alpha =0.3,size = 5)
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+# #   xlim(-1000, 1000) + 
+# scale_color_manual(values=c('#039fbe','#cf1578'))+
+ggtitle(mtb)+
+theme(legend.text = element_text(size = 20))+
+ theme(axis.title.y = element_text(size = 25))  + theme(axis.title.x = element_text(size = 25)) +
+ theme(axis.text.y = element_text(size = 20)) + theme(axis.text.x = element_text(size =20)) + theme(
+plot.title = element_text(color="black", size=25, face="bold"))
+```
+
+## peak box plot
+
+```{r}
+# mtb='rLC_neg_mtb_3755909' # best down
+
+# mtb='rLC_neg_mtb_3673167' # best up
+mtb='rLC_neg_mtb_294302' #overlap with general
+df_worsk_peak=mdata[(mdata$WorstSarnat > 0)&(mdata$Timepoint=='T1') ,c("Timepoint", 'Sarnat_T1','Patient_ID','level','mtb_id','Visit','GA','WorstSarnat','WorstGradeTime')]
+colnames(df_worsk_peak)=c("Timepoint",'Sarnat_T1', 'Patient_ID','level','mtb_id','Visit','GA','WorstSarnat','WorstGradeTime')
+df_worsk_peak=as.data.frame(df_worsk_peak)
+
+df_worsk_peak$worstime=0
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="<6H",'Worstime']=3
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="6H",'Worstime']=6
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="24H",'Worstime']=24
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="48H",'Worstime']=48
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="72H",'Worstime']=72
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="96H",'Worstime']=96
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="D6",'Worstime']=144
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="D7",'Worstime']=168
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="D8",'Worstime']=192
+df_worsk_peak[df_worsk_peak$WorstGradeTime=="D10",'Worstime']=240
+
+unique(setDT(df_worsk_peak), by = c("Patient_ID", "mtb_id"))
+print(dim(df_worsk_peak))
+df_worsk_peak$WorstSarnat=as.factor(df_worsk_peak$WorstSarnat)
+df_worsk_peak=setDT(df_worsk_peak)
+peak_mtb=df_worsk_peak[mtb_id %in% mtb]
+```
+
+
+```{r}
+Peak_Sarnar_Time=as.factor(peak_mtb$Worstime)
+Peak_Sarnar_Time=lapply(Peak_Sarnar_Time, paste0, " hr")
+peak_mtb$Peak_Sarnar_Time=as.factor(unlist(Peak_Sarnar_Time))
+peak_mtb=peak_mtb[order(Worstime,decreasing=TRUE),]
+```
+
+
+```{r}
+myplot=ggplot(peak_mtb, aes(x=WorstSarnat, y=level, fill=factor(Worstime))) +
+#       stat_boxplot(geom = "errorbar", width=0.5, position = position_dodge(1)) +
+      geom_boxplot(position = position_dodge(1), outlier.shape = NA)+
+      geom_point(aes(fill =  factor(Worstime),  group = factor(Worstime)), 
+#                  color="black", 
+                 alpha  =0.5, size=3, 
+                 position = position_jitterdodge(jitter.width = .1, dodge.width = 1)) +
+#       scale_shape_manual (values = c(21,23) ) +
+      guides(fill = guide_legend(override.aes = list(shape = NA) ) )
+
+myplot+ggtitle(mtb)+ 
+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+# # # # #   xlim(-1000, 1000) + 
+
+theme(legend.text = element_text(size = 20))+
+ theme(axis.title.y = element_text(size = 25))  + theme(axis.title.x = element_text(size = 25)) +
+ theme(axis.text.y = element_text(size = 20)) + theme(axis.text.x = element_text(size =20)) + theme(
+plot.title = element_text(color="black", size=25, face="bold"))
+
+```
+
+
+```{r}
+
+myplot=ggplot(peak_mtb, aes(x=WorstSarnat, y=level, fill=factor(Worstime))) +
+  geom_boxplot()
+# Add dots
+myplot + geom_dotplot(binaxis='y', 
+                      stackdir='center', 
+#                       stackgroups = FALSE,
+#                       binwidth = 1, 
+#                       binpositions = "all",
+#                       fill = factor(peak_mtb$Worstime),
+#                       binwidth=1/25,
+                      dotsize = 0.5,
+                 position=position_dodge(3))
+
+# scale_color_manual(values=c('#039fbe','#cf1578'))+ 
+ggtitle(mtb)+ 
+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+# # # # #   xlim(-1000, 1000) + 
+# guides(fill = guide_legend(override.aes = list(shape = NA) ) )
+
+theme(legend.text = element_text(size = 20))+
+ theme(axis.title.y = element_text(size = 25))  + theme(axis.title.x = element_text(size = 25)) +
+ theme(axis.text.y = element_text(size = 20)) + theme(axis.text.x = element_text(size =20)) + theme(
+plot.title = element_text(color="black", size=25, face="bold"))
+myplot
+```
+
+# thoms t1
+
+```{r}
+data=as.data.frame(tmp_severity_t1)
+# data=as.data.frame(output)
+data=data[data$warnings_full=='None',]
+data['logp']=-log10(data$p.value_level)
+data['Type']='Below threshold'
+data[data$logp>3 & data$estimate_level>0 ,'Type']='Elevated above threshold'
+data[data$logp>3 & data$estimate_level<0 ,'Type']='Reduced above threshold'
+
+
+myplot=ggplot(data, aes(x=estimate_level, y=logp,color=Type))+geom_point(alpha = 0.4 )
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  xlim(-2, 2) + 
+scale_color_manual(values=c('grey','#039fbe','#cf1578'))+ 
+theme(legend.text = element_text(size = 15))+
+ theme(axis.title.y = element_text(size = 20))  + theme(axis.title.x = element_text(size = 20)) +
+ theme(axis.text.y = element_text(size = 15)) + theme(axis.text.x = element_text(size = 15)) 
+```
+
+
+```{r}
+print(length(data[data$logp>3 & data$estimate_level<0 ,'mtb_id']))
+print(length(data[data$logp>3 & data$estimate_level>0 ,'mtb_id']))
+reduced_tmp_t1=data[data$logp>3 & data$estimate_level<0 ,'mtb_id']
+elevated_tmp_t1=data[data$logp>3 & data$estimate_level>0 ,'mtb_id']
+tmp_t1=data[data$logp>3,'mtb_id']
+```
+
+# thoms t2
+
+```{r}
+data=as.data.frame(tmp_severity_t2)
+# data=as.data.frame(output)
+data=data[data$warnings_full=='None',]
+data['logp']=-log10(data$p.value_level)
+data['Type']='Below threshold'
+data[data$logp>3 & data$estimate_level>0 ,'Type']='Elevated above threshold'
+data[data$logp>3 & data$estimate_level<0 ,'Type']='Reduced above threshold'
+
+
+myplot=ggplot(data, aes(x=estimate_level, y=logp,color=Type))+geom_point(alpha = 0.4 )
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  xlim(-2, 2) + 
+scale_color_manual(values=c('grey','#039fbe','#cf1578'))+ 
+theme(legend.text = element_text(size = 15))+
+ theme(axis.title.y = element_text(size = 20))  + theme(axis.title.x = element_text(size = 20)) +
+ theme(axis.text.y = element_text(size = 15)) + theme(axis.text.x = element_text(size = 15)) 
+```
+
+
+```{r}
+print(length(data[data$logp>3 & data$estimate_level<0 ,'mtb_id']))
+print(length(data[data$logp>3 & data$estimate_level>0 ,'mtb_id']))
+reduced_tmp_t2=data[data$logp>3 & data$estimate_level<0 ,'mtb_id']
+elevated_tmp_t2=data[data$logp>3 & data$estimate_level>0 ,'mtb_id']
+tmp_t2=data[data$logp>3,'mtb_id']
+```
+
+# venn diagram
+
+```{r}
+t1t2_marker_list <- list(
+  T1_markers = t1, 
+  T2_markers = t2
+  )
+
+# elevated_t1t2_marker_list <- list(
+#   elevated_T1_markers = elevated_t1, 
+#   elevated_T2_markers = elevated_t2
+#   )
+
+elevated_t1_marker_list <- list(
+  elevated_T1_markers = elevated_t1, 
+  elevated_Thompson_T1_markers = elevated_tmp_t1,
+  elevated_T2_markers = elevated_t2, 
+  elevated_Thompson_T2_markers = elevated_tmp_t2
+  )
+
+reduced_t1_marker_list <- list(
+  reduced_1_markers = reduced_t1, 
+  reduced_Thompson_T1_markers = reduced_tmp_t1,
+  reduced_T2_markers = reduced_t2, 
+  reduced_Thompson_T2_markers = reduced_tmp_t2
+  )
+
+# reduced_t1t2_marker_list <- list(
+#   reduced_T1_markers = reduced_t1, 
+#   reduced_T2_markers = reduced_t2
+#   )
+
+
+all_marker_list <- list(
+  General_markers = log_lmm, 
+  T1_markers = t1, 
+  T2_markers = t2,
+  peak_markers = peak
+  )
+
+
+reduced_all_marker_list <- list(
+  General_markers = reduced_log_lmm, 
+  T1_markers = reduced_t1, 
+  T2_markers = reduced_t2,
+  peak_markers = reduced_peak
+  )
+
+
+elevated_all_marker_list <- list(
+  General_markers = elevated_log_lmm, 
+  T1_markers = elevated_t1, 
+  T2_markers = elevated_t2,
+  peak_markers = elevated_peak
+  )
+```
+
+
+```{r}
+if (!require(devtools)) install.packages("devtools")
+devtools::install_github("yanlinlin82/ggvenn")
+```
+
+
+```{r}
+library(ggvenn)
+ggvenn(
+  all_marker_list, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+```
+
+
+```{r}
+ggvenn(
+  elevated_all_marker_list, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+```
+
+
+```{r}
+ggvenn(
+  t1t2_marker_list, 
+  fill_color = c("#0073C2FF", "#EFC000FF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+```
+
+
+```{r}
+elevated_tmp_t1
+```
+
+
+```{r}
+ggvenn(
+  elevated_t1_marker_list, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+```
+
+
+```{r}
+ggvenn(
+  reduced_t1_marker_list, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+```
+
+# intersect
+
+```{r}
+all_marker_list <- list(
+  General_markers = lmm, 
+  T1_markers = t1, 
+  T2_markers = t2,
+  peak_markers = peak
+  )
+```
+
+
+```{r}
+Reduce(intersect,list(t1,peak))
+```
+
+
+```{r}
+Reduce(intersect,list(log_lmm,t1))
+```
+
+
+```{r}
+Reduce(intersect,list(log_lmm,peak))
+```
+
+
+```{r}
+mtb='rLC_neg_mtb_3755909' #peak
+test_data2=mdata[mtb_id %in% mtb] 
+test_data2=as.data.frame(test_data2)
+V1sit1 = test_data2[test_data2$Timepoint == 'T1',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T1','Visit')]
+colnames(V1sit1)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+V1sit2 = test_data2[test_data2$Timepoint == 'T2',c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat_T2','Visit')]
+colnames(V1sit2)=c("Timepoint", 'Patient_ID','level','mtb_id','Sarnat','Visit')
+df1 = rbind(V1sit1,V1sit2)
+V1sit1=V1sit1[V1sit1$Sarnat>=1,]
+df1=df1[df1$Sarnat>=1,]
+print(dim(df1))
+df1=setDT(df1)
+
+myplot=ggplot(V1sit1, aes(x=Sarnat, y=level))+geom_point(alpha =0.3,size = 5,color='#039fbe')
+myplot
+myplot + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+# #   xlim(-1000, 1000) + 
+# scale_color_manual(values=c('#039fbe','#cf1578'))+
+ggtitle(mtb)+
+theme(legend.text = element_text(size = 20))+
+ theme(axis.title.y = element_text(size = 25))  + theme(axis.title.x = element_text(size = 25)) +
+ theme(axis.text.y = element_text(size = 20)) + theme(axis.text.x = element_text(size =20)) + theme(
+plot.title = element_text(color="black", size=25, face="bold"))
+```
+
+
+```{r}
+# Pie Chart with Percentages
+slices <- c(dim(V1sit1[V1sit1$Sarnat==1,])[1], dim(V1sit1[V1sit1$Sarnat==2,])[1], dim(V1sit1[V1sit1$Sarnat==3,])[1])
+lbls <- c("Mild", "Moderate", "Severe")
+pct <- round(slices/sum(slices)*100)
+lbls <- paste(lbls, pct) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels
+pie(slices,labels = lbls, 
+   main="Pie Chart of Visit 1")
+```
+
+
+```{r}
+slices <- c(dim(V1sit2[V1sit2$Sarnat==1,])[1], dim(V1sit2[V1sit2$Sarnat==2,])[1], dim(V1sit2[V1sit2$Sarnat==3,])[1])
+lbls <- c("Mild", "Moderate", "Severe")
+pct <- round(slices/sum(slices)*100)
+lbls <- paste(lbls, pct) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels
+pie(slices,labels = lbls, 
+   main="Pie Chart of Visit 2")
+```
+
+
+```{r}
+slices <- c(dim(df1[df1$Sarnat==1,])[1], dim(df1[df1$Sarnat==2,])[1], dim(df1[df1$Sarnat==3,])[1])
+lbls <- c("Mild", "Moderate", "Severe")
+pct <- round(slices/sum(slices)*100)
+lbls <- paste(lbls, pct) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels
+pie(slices,labels = lbls, 
+   main="Pie Chart of Visits")
+```
+
+
+```{r}
+df1
+```
+
+
+```{r}
+slices <- c(dim(df1[df1$Timepoint=='T1',])[1], dim(df1[df1$Timepoint=='T2',])[1])
+lbls <- c("Visit1", "Visit2")
+pct <- round(slices/sum(slices)*100)
+lbls <- paste(lbls, pct) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels
+pie(slices,labels = lbls, 
+   main="Pie Chart of Visits")
+```
+
+# upset
+
+```{r}
+install.packages("UpSetR")
+library(UpSetR)
+```
+
+
+```{r}
+all_marker_list <- list(
+  General_markers = log_lmm, 
+  T1_markers = t1, 
+  T2_markers = t2,
+  peak_markers = peak
+  )
+```
+
+
+```{r}
+upset(fromList(all_marker_list), order.by = "degree", number.angles = 30, point.size = 3.5, line.size = 2, set_size.numbers_size=5,
+    mainbar.y.label = "Number of metabolites", sets.x.label = "Number of metabolites",nintersects=3)
+```
+
+
+```{r}
+
+```
+
